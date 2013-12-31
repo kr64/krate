@@ -1,4 +1,11 @@
 *.py[cod]
+*~
+
+# KR krate-specific ignores
+*.dat
+*.gp
+*.tmp
+*.LST
 
 # C extensions
 *.so
@@ -34,3 +41,4 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+

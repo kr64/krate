@@ -1,0 +1,64 @@
+# take parameterised FRA plots (alpha)
+
+legend_original=krate_vars["legend"]
+
+kr_print_message("INFO: Take parameterised FRA plot (alpha)")
+alpha_start=0.0
+alpha_stop=1.0
+alpha_incr=0.05
+
+kr_print_message("      Parameter alpha ranges from %0.1f..%0.1f with increments of %0.2f"%(alpha_start,alpha_stop,alpha_incr))
+
+alpha=alpha_start
+
+try:
+    if fra1.alive:
+        received_input=raw_input("REQUEST: Alpha increments? (default=%.2f): "%alpha_incr)
+        if received_input:
+            alpha_incr=float(received_input)
+        while True:
+            received_input=raw_input("REQUEST: Set alpha to %.2f then PRESS RETURN (or 's' to STOP): "%alpha)
+            if "S" in received_input.upper():
+                break
+            kr_print_message("INFO: Start FRA and wait for data...")
+            fra1.output("on")
+            fra1.sweep("start")
+            # wait until FRA has completed
+            while True:
+                completion=fra1.sweep_check_completion(krate_vars['fstart'],krate_vars['fstop'])
+                if completion<0:
+                    kr_print_message("ERROR: FRA has no data")
+                    break
+                elif completion>=100:
+                    kr_print_message("INFO: FRA complete")
+                    break
+                time.sleep(0.5)
+            krate_vars["alpha"]=alpha
+            if completion>=100:
+                if legend_original=="":
+                    legend="a=%.2f"%alpha
+                else:
+                    legend=legend_original+" a=%.2f"%alpha
+                krate_vars["legend"]=legend
+                krate_vars["fra_sweep_var"]="alpha"
+                krate_vars["fra_sweep_value"]=alpha
+                krate_vars["fra_sweep_unit"]=""
+                kr_fra_get(showplot=False)
+                # restore defaults of krate variables
+                krate_vars["legend"]=legend_original
+                krate_vars["fra_sweep_var"]=""
+            else:
+                break
+            alpha=alpha+alpha_incr
+            if alpha>alpha_stop:
+                break
+            if Vin1.alive:
+                pass
+            else:
+                kr_print_message("ERROR: Lost communication with load")
+                break
+    else:
+        kr_print_message("ERROR: Lost communication with FRA")
+except KeyboardInterrupt:
+    # retain current state of sweep affairs
+    kr_print_message("\rINFO: Parameterised FRA terminated")

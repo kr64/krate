@@ -1,0 +1,41 @@
+try:
+    if Load1.alive:
+        io_ph=krate_vars["io_pulse_high"]
+        io_pl=krate_vars["io_pulse_low"]
+        io_ton=krate_vars["io_pulse_ton"]
+        io_tper=krate_vars["io_pulse_tper"]
+        load_v_per_a=krate_vars["load_v_per_a"]
+        load_v_offset=krate_vars["load_v_offset"]
+        sr_max=krate_vars['io_pulse_sr']
+        sr_min=sr_max*0.05
+        sr_step=0.05
+        sr_sweep_sleep=0.05
+        sr_sweep=sr_max
+        sweep_dir="DOWN"
+        while True:
+            if "UP" in sweep_dir.upper():
+                sr_sweep=sr_sweep*(1+sr_step)
+                if sr_sweep>sr_max:
+                    sr_sweep=sr_max
+                    sweep_dir="DOWN"
+            else:
+                sr_sweep=sr_sweep*(1-sr_step)
+                if sr_sweep<sr_min:
+                    sr_sweep=sr_min
+                    sweep_dir="UP"
+                    # after a complete sweep up and down, check if instrument is still responsive
+                    # s=Load1.read_opc()  # AFG3022 looses comms frequently. if so, go into IO menu, toggle OFF bus to re-establish
+                                        # no prettier solution found
+                    # kr_print_message("Debug: *OPC? returned '%s'" %s)
+
+            Load1.conf_sr(io_ph,io_pl,sr_sweep,load_v_per_a,load_v_offset)
+
+            if Load1.alive:
+                    kr_print_message("INFO: Sweeping SR=%6.3fA/us" % sr_sweep)
+                    time.sleep(sr_sweep_sleep)
+            else:
+                kr_print_message("ERROR: Lost communication with load")
+                break
+except KeyboardInterrupt:
+    # retain current state of sweep affairs
+    kr_print_message("\rINFO: SR sweep terminated")

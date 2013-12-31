@@ -1,0 +1,62 @@
+# take parameterised FRA plots
+
+legend_original=krate_vars["legend"]
+
+kr_print_message("INFO: Take parameterised FRA plot (Vin)")
+vin_points=[6.5, 7, 8, 9, 10, 12, 14]
+vin_str="{"
+for i in vin_points:
+    vin_str=vin_str+"%.1fV"%i
+    if i!=vin_points[-1]:
+        vin_str=vin_str+", "
+vin_str=vin_str+"}"
+kr_print_message("      Parameter Vin: %s"%vin_str)
+
+try:
+    if fra1.alive and Vin1.alive:
+        while True:
+            for vin in vin_points:
+                kr_print_message("INFO: Set Vin=%.1fV"%vin)
+                Vin1.conf_vin(vin)
+                time.sleep(1)   # let it dwell for a second
+                kr_print_message("INFO: Start FRA and wait for data...")
+                fra1.output("on")
+                fra1.sweep("start")
+                # wait until FRA has completed
+                while True:
+                    completion=fra1.sweep_check_completion(krate_vars['fstart'],krate_vars['fstop'])
+                    if completion<0:
+                        kr_print_message("Error: FRA has no data")
+                        break
+                    elif completion>=100:
+                        kr_print_message("INFO: FRA complete")
+                        break
+                    time.sleep(0.5)
+                krate_vars["vi"]=vin
+                if completion>=100:
+                    if legend_original=="":
+                        legend="Vin=%.1fV"%vin
+                    else:
+                        legend=legend_original+" Vin=%.1fV"%vin
+                    krate_vars["legend"]=legend
+                    krate_vars["fra_sweep_var"]="Vin"
+                    krate_vars["fra_sweep_value"]=vin
+                    krate_vars["fra_sweep_unit"]="V"
+                    kr_fra_get(showplot=False)
+                    # restore defaults of krate variables
+                    krate_vars["legend"]=legend_original
+                    krate_vars["fra_sweep_var"]=""
+                else:
+                    break
+                if fra1.alive and Vin1.alive:
+                    pass
+                else:
+                    kr_print_message("ERROR: Lost communication with load")
+                    break
+
+            break
+    else:
+        kr_print_message("ERROR: Lost communication with load")
+except KeyboardInterrupt:
+    # retain current state of sweep affairs
+    kr_print_message("\rINFO: Parameterised FRA terminated")

@@ -1,0 +1,2 @@
+# command file for krate
+smbb import reg 3012_FW.LST     # load standard register definitions

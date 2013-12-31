@@ -1,0 +1,28 @@
+try:
+    if Vin1.alive:
+        vin_sweep=krate_vars['vi_sweep_start']
+        vin_sweep_dir=krate_vars['vi_sweep_dir']
+        while True:
+            if "UP" in vin_sweep_dir.upper():
+                vin_sweep=vin_sweep+krate_vars['vi_sweep_vstep']
+                if vin_sweep>krate_vars['vi_sweep_max']:
+                    vin_sweep=krate_vars['vi_sweep_max'];
+                    vin_sweep_dir="DOWN"
+            else:
+                vin_sweep=vin_sweep-krate_vars['vi_sweep_vstep']
+                if vin_sweep<krate_vars['vi_sweep_min']:
+                    vin_sweep=krate_vars['vi_sweep_min'];
+                    vin_sweep_dir="UP"
+            Vin1.conf_vin(vo=vin_sweep)
+            if Vin1.alive:
+                kr_print_message("INFO: Sweeping Vin=%6.3fV" % vin_sweep)
+                time.sleep(krate_vars['vi_sweep_tstep'])
+            else:
+                kr_print_message("ERROR: Lost communication with Vin supply")
+                break
+except KeyboardInterrupt:
+    # retain current state of sweep affairs
+    krate_vars['vi_sweep_start']=vin_sweep
+    krate_vars['vi_sweep_dir']=vin_sweep_dir
+    kr_print_message("\rINFO: Sweep terminated")
+    Vin1.clear_rbuffer()
