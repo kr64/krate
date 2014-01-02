@@ -5,8 +5,8 @@
 import math, glob, os, serial, time
 
 def krate_version():
-    krate_vxpxx=0.75
-    return ("krate v%0.2f 27/12/2013, (c) 2011-2013 by KR" % krate_vxpxx)
+    krate_vxpxx=0.76
+    return ("krate v%0.2f 02/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
 
 class FraData(object):
     def __init__(self,name="",legend="", datetimestr=""):
@@ -240,6 +240,7 @@ class Smbb(object):
         self.command_delay=0.01
         self.addr_pmbus=[]
         self.addr_pmbus_active=None
+        self.answer_delimiter=" "
     def __del__(self):
         Smbb.nof-=1
     def ifclose(self):
@@ -253,7 +254,7 @@ class Smbb(object):
             self.serobject.close()
             self.serobject=None
         try:
-            if "mbed" in self.iftype:
+            if "ttyacm" in self.iftype:
 ##                print "trying to talk to '%s'" % self.ifname
                 self.serobject=serial.Serial(self.ifname,baudrate=9600, bytesize=8, parity='N', stopbits=1, timeout=self.timeout, xonxoff=0, rtscts=0)
 ##                if self.serobject:
@@ -268,49 +269,77 @@ class Smbb(object):
             self.serobject=None
             self.ifname="/dev/tbd"
             self.iftype="tbd"
+    def ifflush(self):
+      if self.serobject:
+	self.serobject.flushInput()
+	self.serobject.flushOutput()
     def set_instr_name(self):
         if self.serobject:
-            self.serobject.write("ver\n")
-            s=self.serobject.readline() # flush garbage
-            self.serobject.write("ver\n")
-            s=self.serobject.readline()
+	    # at this stage we don't know which smbb bridge is in use, so ver needs to work for all devices (mbed, u2i)
+	    self.serobject.write("ver\n")
+	    s=self.serobject.readline() # flush garbage
+	    self.serobject.write("ver\n")
+	    s=self.serobject.readline()
             self.instr_name=s.strip()
             if s:
                 self.alive=True
             else:
                 self.alive=False
+            if "u2i" in s:
+	      # if u2i, clear fault LEDs
+	      self.serobject.write("z 1\n")
+	      s=self.serobject.readline()
+	      self.answer_delimiter=", "	# u2i answer delimiter
+	    else:
+	      self.answer_delimiter=" "		# mbed smbb answer delimiter
         else:
             self.alive=False
     def scan_pmbus_addresses(self):
         if self.serobject and self.alive:
             self.addr_pmbus=[]
             self.addr_pmbus_active=None
-            self.serobject.write("scan 10 7F\n")
-            s=self.serobject.readline().strip()
-            # print "received address string '%s'" % s
-            try:
-                for addr in s:
-                    self.addr_pmbus=list([int(i,16) for i in s.split(" ")])
-                if len(self.addr_pmbus)>0:
-                    self.addr_pmbus_active=self.addr_pmbus[0]
-            except:
-                self.addr_pmbus=list()
-                self.addr_pmbus_active=None
-                self.alive=False
-                # print "received address string '%s' hence device interface is assumed not alive" % s
+            if "u2i" in self.instr_name:
+	      # Arduino u2i
+	      self.serobject.write("s 10 7F\n")
+	      s=self.serobject.readline().strip().strip("[]");
+	      # print "u2i stripped address string '%s'" % s
+	      if s:
+		self.addr_pmbus=list([int(i,16) for i in s.split(self.answer_delimiter)])
+		self.addr_pmbus_active=self.addr_pmbus[0]
+	      else:
+		self.addr_pmbus=list()
+		self.addr_pmbus_active=None
+	      self.serobject.write("z 1\n")
+	      s=self.serobject.readline()
+	    else:
+	      # mbed smbb
+	      self.serobject.write("scan 10 7F\n")
+	      s=self.serobject.readline().strip()
+	      # print "received address string '%s'" % s
+	      try:
+		  for addr in s:
+		      self.addr_pmbus=list([int(i,16) for i in s.split(self.answer_delimiter)])
+		  if len(self.addr_pmbus)>0:
+		      self.addr_pmbus_active=self.addr_pmbus[0]
+	      except:
+		  self.addr_pmbus=list()
+		  self.addr_pmbus_active=None
+		  self.alive=False
+		  # print "received address string '%s' hence device interface is assumed not alive" % s
     def pmbus_address_set(self):
         if self.serobject and self.alive:
+	    # addr 0xyy works for both mbed as well as u2i
             self.serobject.write("addr %02x\n"%self.addr_pmbus_active)
-            # smbb responds with address, ignore
+            # smbb and u2i respond with address, ignore
             s=self.serobject.readline()
     def pmbus_read_fw_version(self):
         if  self.serobject and self.alive:
             # READ_FW_VERSION
             # returns lsb msb with lsb=version and msb representing "F", or "B", or "A", or "I", or "S"
             self.serobject.write("r E0 2\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     fw_str="%c%03d" % (answer[1],answer[0])
                 else:
@@ -323,10 +352,10 @@ class Smbb(object):
             # READ_DSP_VERSION
             # returns block of 5 bytes, with 04 b0 b1 b2 b3, b0/b1 dsp version tag, and b2/b3 version value
             self.serobject.write("r E5 5\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             # print "DSP_VERSION returned the data: '%s'" % s
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==5:
                     dsp_str="D%03d" % (answer[3]+answer[4]*256)
                 else:
@@ -339,9 +368,9 @@ class Smbb(object):
             # READ_HW_VERSION
             # returns lsb representing HW version, [7:4] major, [3:0] minor
             self.serobject.write("r E1 1\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==1:
                     hw_str="HW%01d.%01d" % (int(answer[0])/16,int(answer[0])%16)
                 else:
@@ -354,9 +383,9 @@ class Smbb(object):
             # ICMFR_INFO
             # returns lsb msb with lsb=01 (count), and msb='B' for BL, or 'F', or...
             self.serobject.write("r D8 2\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     icmfr_info_str="%c" % (answer[1])
                 else:
@@ -367,9 +396,9 @@ class Smbb(object):
     def pmbus_status_word(self):
         if  self.serobject and self.alive:
             self.serobject.write("r 79 2\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     status=answer[0]+answer[1]*256
                 else:
@@ -390,9 +419,9 @@ class Smbb(object):
     def pmbus_read_vin(self):
         if  self.serobject and self.alive:
             self.serobject.write("r 88 2\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     vin=self.pmbus_q15_0(answer[0],answer[1])/1862.0
                 else:
@@ -403,9 +432,9 @@ class Smbb(object):
     def pmbus_read_vout(self):
         if  self.serobject and self.alive:
             self.serobject.write("r 8B 2\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     vout=self.pmbus_q15_0(answer[0],answer[1])/640.0
                 else:
@@ -416,9 +445,9 @@ class Smbb(object):
     def pmbus_read_iout(self):
         if  self.serobject and self.alive:
             self.serobject.write("r 8C 2\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     iout=self.pmbus_q15_0(answer[0],answer[1])/10.24
                 else:
@@ -429,9 +458,9 @@ class Smbb(object):
     def pmbus_read_duty_cycle(self):
         if  self.serobject and self.alive:
             self.serobject.write("r 94 2\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     d=self.pmbus_q15_0(answer[0],answer[1])/10.0
                 else:
@@ -442,9 +471,9 @@ class Smbb(object):
     def pmbus_read_frequency(self):
         if  self.serobject and self.alive:
             self.serobject.write("r 95 2\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     f=self.pmbus_q15_0(answer[0],answer[1])/32.0
                 else:
@@ -455,9 +484,9 @@ class Smbb(object):
     def pmbus_read_nof_phases(self):
         if  self.serobject and self.alive:
             self.serobject.write("r E6 2\n")
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     ph_field=(self.pmbus_q15_0(answer[0],answer[1]) & 0x30)>>4
                     if ph_field==0:
@@ -485,9 +514,9 @@ class Smbb(object):
             else:
                 command=0x8D
             self.serobject.write("r %02X 2\n"%command)
-            s=self.serobject.readline().strip()
+            s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
-                answer=list([int(i,16) for i in s.split(" ")])
+		answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                 if len(answer)==2:
                     temp=self.pmbus_q15_0(answer[0],answer[1])/1.0
                 else:
@@ -512,9 +541,9 @@ class Smbb(object):
             if fsw==None:
                 # fsw not provided, read frequency_switch
                 self.serobject.write("r 33 2\n")
-                s=self.serobject.readline().strip()
+                s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
                 try:
-                    answer=list([int(i,16) for i in s.split(" ")])
+		    answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                     if len(answer)==2:
                         f=answer[0]+answer[1]*256
                     else:
@@ -532,9 +561,9 @@ class Smbb(object):
             if new_general_settings==None:
                 # new_general_settings not provided, just read
                 self.serobject.write("r E6 2\n")
-                s=self.serobject.readline().strip()
+                s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
                 try:
-                    answer=list([int(i,16) for i in s.split(" ")])
+		    answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                     if len(answer)==2:
                         gs=answer[0]+answer[1]*256
                     else:
@@ -575,9 +604,9 @@ class Smbb(object):
             if hal_data==None:
                 # HAL read access
                 self.serobject.write("r E8 2\n")
-                s=self.serobject.readline().strip()
+                s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
                 try:
-                    answer=list([int(i,16) for i in s.split(" ")])
+		    answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                     if len(answer)==2:
                         response=answer[0]+answer[1]*256
                     else:
@@ -598,9 +627,9 @@ class Smbb(object):
             if amba_data==None:
                 # AMBAREG_W read access
                 self.serobject.write("r D3 2\n")
-                s=self.serobject.readline().strip()
+                s=self.serobject.readline().strip().strip("[]")
                 try:
-                    answer=list([int(i,16) for i in s.split(" ")])
+		    answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
                     if len(answer)==2:
                         response=answer[0]+answer[1]*256
                     else:
@@ -616,20 +645,25 @@ class Smbb(object):
         # statistical read access (word) returning min, max and avg
         if  self.serobject and self.alive:
             self.serobject.write("w D0 %02X %02X\n" % (int(amba_addr%256),int(amba_addr>>8)) )
-            s=self.serobject.readline().strip()
-            self.serobject.write("statr2 D3 %f\n" % nof_reads)
-            time_spent=0.0
-            s=""
-            while ( (s=="") & (time_spent<timeout_statr2) ):
-                time.sleep(0.1)
-                time_spent=time_spent+0.1
-                s=self.serobject.readline().strip()
-            s_data=s.split(" ")
-            if len(s_data)==3:
-                s_data_conv=[ eval("0x"+s_data[0]),eval("0x"+s_data[1]),float(s_data[2]) ]
-            else:
-                s_data_conv=None
-            return s_data_conv
+            s=self.serobject.readline().strip().strip("[]")
+            if "u2i" in self.instr_name:
+	      # statr2 not (yet) implemented in u2i
+	      print " INFO: krate.py (function statr2): statr2 command not yet implemented in bridge device u2i"
+	      s_data_conf=None
+	    else:
+	      self.serobject.write("statr2 D3 %f\n" % nof_reads)
+	      time_spent=0.0
+	      s=""
+	      while ( (s=="") & (time_spent<timeout_statr2) ):
+		  time.sleep(0.1)
+		  time_spent=time_spent+0.1
+		  s=self.serobject.readline().strip()
+	      s_data=s.split(" ")
+	      if len(s_data)==3:
+		  s_data_conv=[ eval("0x"+s_data[0]),eval("0x"+s_data[1]),float(s_data[2]) ]
+	      else:
+		  s_data_conv=None
+	      return s_data_conv
     def pmbus_devinfo(self):
         # try to compile smbus device info, consisting of FW/DSP/HW and Status Word information
         if  self.serobject and self.alive:
@@ -707,12 +741,12 @@ class Smbb(object):
 
 def smbb_find(Smbb):
     Smbb.__init__(addr=0)
-    # look for usb ttyACM device (as used by multifunctional mbed device)
+    # look for usb ttyACM device (as used by multifunctional mbed and Arduino devices)
     for dev in find_usb_serial_devices():
-        if 'mbed' in dev[1]:
+        if 'ttyacm' in dev[1]:
             Smbb.alive=True
             Smbb.ifname=dev[0]
-            Smbb.iftype="mbed"
+            Smbb.iftype="ttyacm"
     # if an instrument was found, permanently open it, determine name and version
     if Smbb.alive:
         Smbb.ifopen()
@@ -1227,7 +1261,7 @@ def find_usb_serial_devices():
         # next, look for ttyACM devices, and accept unfiltered (mbed)
         devices=sorted(glob.glob("/dev/ttyACM*"));
         for device in devices:
-            devicelist.append((device,"mbed"))
+            devicelist.append((device,"ttyacm"))
         return devicelist
 
 # private functions start here
@@ -1237,6 +1271,11 @@ def __identify_usb_serial_device(fn_dev):
     # Sep 10 14:53:35 kr-w500 kernel: [19716.912596] pl2303 ttyUSB0: pl2303 converter now disconnected from ttyUSB0
     # ACM devices (such as mbed)
     # Sep 10 14:55:48 kr-w500 kernel: [19849.882024] cdc_acm 6-2:1.1: ttyACM0: USB ACM device
+
+    # added Arduino support:
+    #Jan  1 11:27:34 kr-w500 kernel: [18923.441170] usb 6-2: Product: Arduino Micro   
+    #Jan  1 11:27:34 kr-w500 kernel: [18923.441176] usb 6-2: Manufacturer: Arduino LLC
+    #Jan  1 11:27:34 kr-w500 kernel: [18923.444247] cdc_acm 6-2:1.0: ttyACM1: USB ACM device
     id="unknown"
     get_ready_for="unkown"
 

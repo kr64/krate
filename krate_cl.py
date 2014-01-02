@@ -1,8 +1,9 @@
 #!/usr/bin/python
 # KR ATE command line user interface
 # history (in reverse order)
+# 02/01/2014    add Arduino u2i mostly supported (except command statr2)
+# 01/01/2014    add Arduino u2i device support (alternative smbb device)
 # 31/12/2013	put under git control (https://github.com/kr64/krate.git)
-# 27/12/2013    add Arduino u2i device support (alternative smbb device)
 # 06/08/2013    add stat facility (ambareg statistical word read)
 # 05/08/2013    add smbb alpha_clamp facility
 # 04/08/2013    add smbb info_dsp facility (overview of dsp registers)
@@ -122,7 +123,7 @@ class KrateCmd(cmd.Cmd):
   'smbb stat' statistical word read of an ambareg register (producing min/max/avg)
   'smbb telemetry' obtains basic device telemetry information from active smbus device
   'smbb vout_command vo' sets a new output voltage"""
-
+	Smbb1.ifflush()		# discard all data in serial input and output buffer
         if (len(line.split())>0):
             if "find" in (line.split()[0]):
                 krate.smbb_find(Smbb1)
@@ -256,7 +257,11 @@ class KrateCmd(cmd.Cmd):
                     for i in sorted(registers_amba.keys()):
                         if ambareg_n in i:
                             ambareg_a=registers_amba[i]
-                            kr_print_message("INFO: register %s [0x%04X] reads 0x%04x" % (i,ambareg_a,Smbb1.pmbus_ambareg(ambareg_a)))
+                            ambareg_v=Smbb1.pmbus_ambareg(ambareg_a)
+                            if ambareg_v!=None:
+			      kr_print_message("INFO: register %s [0x%04X] reads 0x%04x" % (i,ambareg_a,ambareg_v))
+			    else:
+			      kr_print_message("ERROR: failed to read register %s [0x%04X]" % (i,ambareg_a))
             elif "stat" in (line.split()[0]):
                 # we're expecting 1 or 2 arguments. which register, and number of reads (if not given, 1k default)
                 register_found=False
@@ -1436,9 +1441,9 @@ if __name__ == '__main__':
     print welcome_frame
     kr_print_message("HELP: Type 'help' if you're lost. Good luck!\n")
 
-    kr_print_message("NEWS: 31/12/2013 moved to https://github.com/kr64/krate.git")
-    kr_print_message("      27/12/2013 add Arduino-based smbb")
-    kr_print_message("      09/08/2013 add smbb phases[={1,2}]")
+    kr_print_message("NEWS: 01/01/2014 Add Arduino u2i support to smbb")
+    kr_print_message("      31/12/2013 Moved to https://github.com/kr64/krate.git")
+    kr_print_message("      09/08/2013 Add smbb phases[={1,2}]")
     kr_print_message("      07/08/2013 Added list reg inverse lookup, provide address as hex")
     kr_print_message("      07/08/2013 Added smbb info_dsp, smbb stat. Process krate.init at startup")
     kr_print_message("      22/05/2013 Release krate version v0.60")
