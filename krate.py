@@ -5,8 +5,8 @@
 import math, glob, os, serial, time
 
 def krate_version():
-    krate_vxpxx=0.76
-    return ("krate v%0.2f 02/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
+    krate_vxpxx=0.78
+    return ("krate v%0.2f 03/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
 
 class FraData(object):
     def __init__(self,name="",legend="", datetimestr=""):
@@ -286,6 +286,9 @@ class Smbb(object):
             else:
                 self.alive=False
             if "u2i" in s:
+	      # if u2i, set transmission speed to 400kb/s
+	      self.serobject.write("f %x\n" % 400)
+	      s=self.serobject.readline()
 	      # if u2i, clear fault LEDs
 	      self.serobject.write("z 1\n")
 	      s=self.serobject.readline()
@@ -647,9 +650,19 @@ class Smbb(object):
             self.serobject.write("w D0 %02X %02X\n" % (int(amba_addr%256),int(amba_addr>>8)) )
             s=self.serobject.readline().strip().strip("[]")
             if "u2i" in self.instr_name:
-	      # statr2 not (yet) implemented in u2i
-	      print " INFO: krate.py (function statr2): statr2 command not yet implemented in bridge device u2i"
-	      s_data_conf=None
+	      self.serobject.write("t D3 %x\n" % nof_reads)
+	      time_spent=0.0
+	      s=""
+	      while ( (s=="") & (time_spent<timeout_statr2) ):
+		  time.sleep(0.1)
+		  time_spent=time_spent+0.1
+		  s=self.serobject.readline().strip().strip("[]")
+	      s_data=s.split(self.answer_delimiter)
+	      if len(s_data)==3:
+		  s_data_conv=[ eval("0x"+s_data[0]),eval("0x"+s_data[1]),float(s_data[2]) ]
+	      else:
+		  s_data_conv=None
+	      return s_data_conv
 	    else:
 	      self.serobject.write("statr2 D3 %f\n" % nof_reads)
 	      time_spent=0.0

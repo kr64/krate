@@ -1,7 +1,8 @@
 #!/usr/bin/python
 # KR ATE command line user interface
 # history (in reverse order)
-# 02/01/2014    add Arduino u2i mostly supported (except command statr2)
+# 03/01/2014    amend Arduino u2i (add smbb stat)
+# 02/01/2014    add Arduino u2i mostly supported (except command smbb stat)
 # 01/01/2014    add Arduino u2i device support (alternative smbb device)
 # 31/12/2013	put under git control (https://github.com/kr64/krate.git)
 # 06/08/2013    add stat facility (ambareg statistical word read)
@@ -31,7 +32,7 @@ krate_vars={
     "bp_phmin": -450.0,
     "bp_sizex": 1000,
     "bp_sizey": 1000,
-    "dut": "ceb021 f074/d216",
+    "dut": "ceb021 f078/d216",
     "fra_sweep_var": "",
     "fra_sweep_value": 0.0,
     "fra_sweep_unit": "",
@@ -106,7 +107,7 @@ class KrateCmd(cmd.Cmd):
         # trial area for new test code
         pass
     def do_smbb(self,line):
-        """  {arg} interact with SMBus Bridge (smbb)
+        """ interact with SMBus Bridge (smbb)
   'smbb addr' sets the active address for smbus transactions
   'smbb alpha_clamp' sets alpha_min and alpha_max
   'smbb ambareg {value}' reads from, or writes value to, device amba register
@@ -1439,9 +1440,9 @@ if __name__ == '__main__':
     print welcome_frame
     print welcome_str
     print welcome_frame
-    kr_print_message("HELP: Type 'help' if you're lost. Good luck!\n")
+    kr_print_message("HELP: Type 'help [command]' if you're lost. Enjoy!\n")
 
-    kr_print_message("NEWS: 01/01/2014 Add Arduino u2i support to smbb")
+    kr_print_message("NEWS: 03/01/2014 Add Arduino u2i support (incl. smbb stat)")
     kr_print_message("      31/12/2013 Moved to https://github.com/kr64/krate.git")
     kr_print_message("      09/08/2013 Add smbb phases[={1,2}]")
     kr_print_message("      07/08/2013 Added list reg inverse lookup, provide address as hex")
