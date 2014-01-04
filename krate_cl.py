@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # KR ATE command line user interface
 # history (in reverse order)
+# 04/01/2014    amend Arduino u2i (support ara)
 # 03/01/2014    amend Arduino u2i (add smbb stat)
 # 02/01/2014    add Arduino u2i mostly supported (except command smbb stat)
 # 01/01/2014    add Arduino u2i device support (alternative smbb device)
@@ -109,8 +110,9 @@ class KrateCmd(cmd.Cmd):
     def do_smbb(self,line):
         """ interact with SMBus Bridge (smbb)
   'smbb addr' sets the active address for smbus transactions
+  'smbb ara' makes ARA (address resolution protocol) enquiries
   'smbb alpha_clamp' sets alpha_min and alpha_max
-  'smbb ambareg {value}' reads from, or writes value to, device amba register
+  'smbb ambareg {reg[=value]}' reads from, or writes value to, device amba register
   'smbb clear_faults' clears PMBus faults status register
   'smbb frequency_switch fsw' sets switching frequency to fsw (375-1000kHz in 125kHz steps
   'smbb hal reg [value]' reads from, or writes value to, device HAL register
@@ -131,7 +133,12 @@ class KrateCmd(cmd.Cmd):
                 kr_list_smbb()
             elif "scan" in (line.split()[0]):
                 Smbb1.scan_pmbus_addresses()
+		Smbb1.pmbus_address_set()
+		Smbb1.pmbus_ara()
                 kr_list_smbb()
+            elif "ara" in (line.split()[0]):
+		Smbb1.pmbus_ara()
+		kr_list_smbb()
             elif "addr" in (line.split()[0]):
                 if len(line.split())>1:
                     Smbb1.addr_pmbus_active=int(line.split()[1])
@@ -340,7 +347,7 @@ class KrateCmd(cmd.Cmd):
         else:
             kr_print_message("Error: smbb command expects an argument")
     def complete_smbb(self, text, line, begidx, endidx):
-        LIST_ITEMS = ['alpha_clamp','find', 'scan','stat','addr','info_dsp','info','telemetry','clear_faults','operation','vout_command','hal','ambareg','import','frequency_switch','phases']
+        LIST_ITEMS = ['alpha_clamp','find', 'scan','stat','addr','ara','info_dsp','info','telemetry','clear_faults','operation','vout_command','hal','ambareg','import','frequency_switch','phases']
         if not text:
             completions = LIST_ITEMS[:]
         else:
@@ -986,6 +993,12 @@ def kr_list_smbb():
         kr_print_message("      smbb smbus addresses scan: %s" % addr_str)
         if Smbb1.addr_pmbus_active<>None:
             kr_print_message("      smbb active smbus address: 0x%02x" % Smbb1.addr_pmbus_active)
+        addr_str=""
+        for a in Smbb1.addr_pmbus_ara:
+            addr_str=addr_str+"0x%02x " % a
+        if addr_str=="":
+            addr_str="No salrt requests"
+        kr_print_message("      smbb salrt ARA addresses: %s" % addr_str)
     else:
         kr_print_message("INFO: No SMBus bridge device found")
         kr_print_message("      Connect device, then type 'smbb find'")
@@ -1442,7 +1455,8 @@ if __name__ == '__main__':
     print welcome_frame
     kr_print_message("HELP: Type 'help [command]' if you're lost. Enjoy!\n")
 
-    kr_print_message("NEWS: 03/01/2014 Add Arduino u2i support (incl. smbb stat)")
+    kr_print_message("NEWS: 04/01/2014 Support u2i ARA feature (smbb ara)")
+    kr_print_message("      03/01/2014 Add Arduino u2i support (incl. smbb stat)")
     kr_print_message("      31/12/2013 Moved to https://github.com/kr64/krate.git")
     kr_print_message("      09/08/2013 Add smbb phases[={1,2}]")
     kr_print_message("      07/08/2013 Added list reg inverse lookup, provide address as hex")

@@ -5,8 +5,8 @@
 import math, glob, os, serial, time
 
 def krate_version():
-    krate_vxpxx=0.78
-    return ("krate v%0.2f 03/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
+    krate_vxpxx=0.80
+    return ("krate v%0.2f 04/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
 
 class FraData(object):
     def __init__(self,name="",legend="", datetimestr=""):
@@ -240,6 +240,7 @@ class Smbb(object):
         self.command_delay=0.01
         self.addr_pmbus=[]
         self.addr_pmbus_active=None
+        self.addr_pmbus_ara=[]
         self.answer_delimiter=" "
     def __del__(self):
         Smbb.nof-=1
@@ -329,6 +330,24 @@ class Smbb(object):
 		  self.addr_pmbus_active=None
 		  self.alive=False
 		  # print "received address string '%s' hence device interface is assumed not alive" % s
+    def pmbus_ara(self):
+	self.addr_pmbus_ara=[]
+	if "u2i" in self.instr_name:
+	  self.serobject.write("l\n")
+	  s=self.serobject.readline().strip().strip("[]");
+	  answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
+	  if answer[0]==0:
+	    self.serobject.write("l 1\n")
+	    s=self.serobject.readline().strip().strip("[]");
+	    try:
+	      self.addr_pmbus_ara=list([int(i,16) for i in s.split(self.answer_delimiter)])
+	    except:
+	      self.addr_pmbus_ara=list()
+	      self.addr_pmbus_active=None
+	      self.alive=False
+	  else:
+	    # SALRT is currently high, i.e. erase ARA list
+            self.addr_pmbus_ara=[]
     def pmbus_address_set(self):
         if self.serobject and self.alive:
 	    # addr 0xyy works for both mbed as well as u2i
@@ -766,6 +785,7 @@ def smbb_find(Smbb):
     if Smbb.alive:
         Smbb.set_instr_name()
         Smbb.scan_pmbus_addresses()
+        Smbb.pmbus_ara()
     return
 
 class Load(object):
