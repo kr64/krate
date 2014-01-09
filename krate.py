@@ -5,7 +5,7 @@
 import math, glob, os, serial, time
 
 def krate_version():
-    krate_vxpxx=0.80
+    krate_vxpxx=0.82
     return ("krate v%0.2f 04/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
 
 class FraData(object):
@@ -349,7 +349,7 @@ class Smbb(object):
 	    # SALRT is currently high, i.e. erase ARA list
             self.addr_pmbus_ara=[]
     def pmbus_address_set(self):
-        if self.serobject and self.alive:
+        if self.serobject and self.alive and self.addr_pmbus_active:
 	    # addr 0xyy works for both mbed as well as u2i
             self.serobject.write("addr %02x\n"%self.addr_pmbus_active)
             # smbb and u2i respond with address, ignore
