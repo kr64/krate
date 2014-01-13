@@ -15,7 +15,7 @@
 # 15/09/2012    smbb vout_command implemented
 # 13/11/2011    created
 
-import cmd, os, krate, time, sys, pickle, xlwt
+import cmd, os, krate, time, sys, pickle, xlwt, numpy
 
 fra1=krate.Fra()
 Vin1=krate.Vin()
@@ -116,6 +116,7 @@ class KrateCmd(cmd.Cmd):
   'smbb clear_faults' clears PMBus faults status register
   'smbb frequency_switch fsw' sets switching frequency to fsw (375-1000kHz in 125kHz steps
   'smbb hal reg [value]' reads from, or writes value to, device HAL register
+  'smbb hist[u] reg [nof]' reads amba register [u]=unsigned nof times and creates a histogram
   'smbb import reg fn' imports amba register definitions from assembly list file
   'smbb info' obtains basic device information from active smbus device
   'smbb info_dsp' provides overview of dsp registers
@@ -123,7 +124,7 @@ class KrateCmd(cmd.Cmd):
   'smbb find' attempts to detect available smbb device
   'smbb operation {on|off}' sends PMBus OPERATION command to smbus device
   'smbb scan' scans smbus for available devices, and activates lowest address
-  'smbb stat' statistical word read of an ambareg register (producing min/max/avg)
+  'smbb stat reg [nof]' statistical word read of an ambareg register (producing min/max/avg)
   'smbb telemetry' obtains basic device telemetry information from active smbus device
   'smbb vout_command vo' sets a new output voltage"""
 	Smbb1.ifflush()		# discard all data in serial input and output buffer
@@ -170,6 +171,7 @@ class KrateCmd(cmd.Cmd):
                     else:
                         kr_print_message("Error: argument outside range [0.0..1.0]")
             elif "info_dsp" in (line.split()[0]):
+	      try:
                 devinfostr=Smbb1.pmbus_devinfo()
                 dspstr=Smbb1.pmbus_read_dsp_version()
                 kr_print_message("INFO: DSP '%s' Overview" % dspstr )
@@ -189,12 +191,20 @@ class KrateCmd(cmd.Cmd):
                 kr_print_message("      AZ: wa/4(x9)=%0.3f which should be reasonably close to sariu_inv_vin(z9)=%0.3f" % (wa4/32768.0,sariu_inv_vin/32768.0) )
                 kr_print_message("      Compensator: x0=0x%04x x1=0x%04x x5=0x%04x x6=0x%04x x7=0x%04x y12=0x%04x" % (bd1,b01,a1_taux,kd0,k00,ki) )
                 kr_print_message("      PRBS noise coefficient(x4)=0x%04x=%.3e(q0.15)" % (prbs_coefficient,prbs_coefficient/32768.0) )
+	      except:
+		kr_print_message("Error: smbb communication problems")
             elif "info" in (line.split()[0]):
+	      try:
                 devinfostr=Smbb1.pmbus_devinfo()
                 kr_print_message("INFO: %s" % devinfostr )
+	      except:
+		kr_print_message("Error: smbb communication problems")
             elif "tele" in (line.split()[0]):
+	      try:
                 devtelestr=Smbb1.pmbus_devtele()
                 kr_print_message("INFO: %s" % devtelestr )
+	      except:
+		kr_print_message("Error: smbb communication problems")
             elif "clear_faults" in (line.split()[0]):
                 Smbb1.pmbus_clear_faults()
                 devinfostr=Smbb1.pmbus_devinfo()
@@ -270,6 +280,47 @@ class KrateCmd(cmd.Cmd):
 			      kr_print_message("INFO: register %s [0x%04X] reads 0x%04x" % (i,ambareg_a,ambareg_v))
 			    else:
 			      kr_print_message("ERROR: failed to read register %s [0x%04X]" % (i,ambareg_a))
+            elif "hist" in (line.split()[0]):
+                # we're expecting 1 or 2 arguments. which register, and number of reads (if not given, 1k default)
+		if "histu" in (line.split()[0]):
+		  treat_values_unsigned=True
+		else:
+		  treat_values_unsigned=False
+                register_found=False
+                if len(line.split())>1:
+                    ambareg_n=line.split()[1]
+                else:
+                    ambareg_n=None
+                if len(line.split())>2:
+                    nof_reads=float(line.split()[2])
+                else:
+                    nof_reads=1000.0
+                if nof_reads<0:
+                    nof_reads=nof_reads*-1;
+                nof_reads=int(nof_reads)
+                if ambareg_n:
+                    for i in sorted(registers_amba.keys()):
+                        if ambareg_n==i:
+                            register_found=True
+                            ambareg_a=registers_amba[ambareg_n]
+                            duration_estimated=nof_reads*(5.0*10.0*(1/400e3)+2e-3)	# raw read duration: S+addr/w+cmd+Sr+addr/r+lsb+msb, plus usb/python overhead say 100%
+                            kr_print_message("Info: Histogram register %s (0x%04x) based on %.0f values. Estimated duration: %.1fs" % (ambareg_n,ambareg_a,float(nof_reads),duration_estimated) )
+                            ambareg_v=Smbb1.pmbus_ambareg_nof(ambareg_a,nof_reads,treat_values_unsigned)	# read ambareg_a nof_reads times, treat values signed/unsigned
+                            if ambareg_v:
+			      reginfostr="%s (addr 0x%04x)" % (ambareg_n,ambareg_a)
+			      devinfostr=Smbb1.pmbus_devinfo()
+			      devtelestr=Smbb1.pmbus_devtele()
+			      statstr="Samples=%.0f Min=%.0f Max=%.0f Pkpk=%0.f Mean=%.3f Stdev=%.3f" % (len(ambareg_v),min(ambareg_v),max(ambareg_v),(max(ambareg_v)-min(ambareg_v)),numpy.mean(ambareg_v),numpy.std(ambareg_v))
+			      kr_print_message("Info: Stats:     %s" % (statstr))
+			      kr_print_message("      Register   %s" % (reginfostr))
+			      kr_print_message("      Device:    %s" % (devinfostr))
+			      kr_print_message("      Telemetry: %s" % (devtelestr))
+			      kr_write_smbbreg("smbbambareg",ambareg_v)
+			      kr_write_gnuplot_hist("smbbambareg", ambareg_v, reginfostr, devinfostr, devtelestr, statstr, True)
+                    if register_found==False:
+                        kr_print_message("Error: Unknown register '%s' (need a fully qualified name. try list reg xxx)" % ambareg_n )
+                else:
+                    kr_print_message("Error: smbb hist expects at least one argument (register name)" )
             elif "stat" in (line.split()[0]):
                 # we're expecting 1 or 2 arguments. which register, and number of reads (if not given, 1k default)
                 register_found=False
@@ -297,7 +348,7 @@ class KrateCmd(cmd.Cmd):
                                 kr_print_message("      Answer: None")
                             break
                     if register_found==False:
-                        kr_print_message("Error: Unknown register '%s'" % ambareg_n )
+                        kr_print_message("Error: Unknown register '%s' (need a fully qualified name. try list reg xxx)" % ambareg_n )
                 else:
                     kr_print_message("Error: smbb stat expects at least one argument (register name)" )
             elif "import" in (line.split()[0]):
@@ -347,7 +398,7 @@ class KrateCmd(cmd.Cmd):
         else:
             kr_print_message("Error: smbb command expects an argument")
     def complete_smbb(self, text, line, begidx, endidx):
-        LIST_ITEMS = ['alpha_clamp','find', 'scan','stat','addr','ara','info_dsp','info','telemetry','clear_faults','operation','vout_command','hal','ambareg','import','frequency_switch','phases']
+        LIST_ITEMS = ['ara','addr','alpha_clamp','ambareg','clear_faults','find','frequency_switch','hal','hist','histu','import','info','info_dsp','operation','phases','scan','stat','telemetry','vout_command']
         if not text:
             completions = LIST_ITEMS[:]
         else:
@@ -1167,9 +1218,68 @@ def kr_write_fra(index,fn="fradat.tmp",overwrite=True,ph_adjust=True):
         except:
             f.close()
             kr_print_message("ERROR: writing to file '%s'" % fn)
-        
     else:
         kr_print_message("INFO: Invalid FRA data set %d" %index )
+
+def kr_write_smbbreg(fn="smbbambareg",values=None,overwrite=True):
+    if (os.path.exists(fn) and overwrite==False):
+      kr_print_message("INFO: File already exists '%s'" % fn)
+      return
+    try:
+	f=open(fn+".tmp","wt")
+	for i in range(0,len(values)):
+	    f.write("%f\n" % (values[i]))
+	f.close()
+    except:
+	f.close()
+	kr_print_message("ERROR: writing to file '%s'" % fn)
+
+
+def kr_write_gnuplot_hist(fn="smbbambareg", values=None, reginfostr="r", devinfostr="", devtelestr="", statstr="", exe_gnuplot=False):
+	    minv=int(min(values)/10)*10
+	    maxv=int(max(values)/10+1)*10
+	    n=min(50,maxv-minv)
+            kr_print_message("INFO: Writing GNUPLOT histogram script to '%s'" % (fn+".gp"))
+            f=open(fn+".gp","wt")
+            gp_str=""
+            gp_str+='# GNUPLOT script generated by %s' % krate.krate_version()
+            gp_str+='\n'+'# Register:  %s' % reginfostr
+            gp_str+='\n'+'# Device:    %s' % devinfostr
+            gp_str+='\n'+'# Telemetry: %s' % devtelestr
+            gp_str+='\n'+'# Stats:     %s' % statstr
+            gp_str+='\n'+'set terminal wxt size %d,%d'%(krate_vars['bp_sizex'],krate_vars['bp_sizey']/2)
+            gp_str+='\n'+'n=%.0f' % n
+            gp_str+='\n'+'max=%.0f' % maxv
+            gp_str+='\n'+'min=%.0f' % minv
+            gp_str+='\n'+'width=(max-min)/n'
+            gp_str+='\n'+'hist(x,width)=width*floor(x/width)+width/2.0'
+            gp_str+='\n'+'set xrange [min:max]'
+            gp_str+='\n'+'set yrange [0:]'
+            gp_str+='\n'+'set offset graph 0.05,0.05,0.05,0.0'
+            gp_str+='\n'+'set xtics min,5,max'
+            gp_str+='\n'+'set boxwidth width'
+            gp_str+='\n'+'set style fill solid 0.5'
+            gp_str+='\n'+'set tics out nomirror'
+            gp_str+='\n'+'set style line 1 lt rgb "red" lw 2'
+            gp_str+='\n'+'set style line 20 lt rgb "gray90" lw 1'
+            gp_str+='\n'+'set grid x y ls 20, ls 20'
+            gp_str+='\n'+'set grid xtics ytics'
+            gp_str+='\n'+'set grid mxtics mytics'
+            # gp_str+='\n'+'set lmargin 10'
+            gp_str+='\n'+'set xlabel "%s"' % reginfostr
+            gp_str+='\n'+'set ylabel "#"'
+            gp_str+='\n'+'plot "%s" u (hist($1,width)):(1.0) smooth freq w boxes lc rgb"green" notitle' % (fn+".tmp")
+            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN+5,GPVAL_Y_MAX*0.95 tc rgb "gray80"' % (statstr)
+            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN+5,GPVAL_Y_MAX*0.90 tc rgb "gray80"' % (devtelestr)
+            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN+5,GPVAL_Y_MAX*0.85 tc rgb "gray80"' % (devinfostr)
+            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN+5,GPVAL_Y_MAX*0.80 tc rgb "gray80"' % (krate.krate_version())
+            gp_str+='\n'+'replot'
+            f.write(gp_str)
+            f.close()
+            if exe_gnuplot:
+                retcode = os.system("which gnuplot >> /dev/null")
+                if (retcode==0):
+                    os.system("gnuplot %s -p" % (fn+".gp"))
 
 def kr_write_gnuplot_pmfc(fn="kratesweep.gp",fn_data="", xvar="x", xunit="", dut="dut", exe_gnuplot=False):
             kr_print_message("INFO: Writing GNUPLOT script to '%s'" % fn)
@@ -1455,14 +1565,15 @@ if __name__ == '__main__':
     print welcome_frame
     kr_print_message("HELP: Type 'help [command]' if you're lost. Enjoy!\n")
 
-    kr_print_message("NEWS: 04/01/2014 Support u2i ARA feature (smbb ara)")
-    kr_print_message("      03/01/2014 Add Arduino u2i support (incl. smbb stat)")
-    kr_print_message("      31/12/2013 Moved to https://github.com/kr64/krate.git")
-    kr_print_message("      09/08/2013 Add smbb phases[={1,2}]")
-    kr_print_message("      07/08/2013 Added list reg inverse lookup, provide address as hex")
-    kr_print_message("      07/08/2013 Added smbb info_dsp, smbb stat. Process krate.init at startup")
-    kr_print_message("      22/05/2013 Release krate version v0.60")
-    kr_print_message("      22/05/2013 Support for Tektronix AFG3022B function generator\n")
+    kr_print_message("      12/01/2014 v0.84 Support register histograms (smbb hist[u])")
+    kr_print_message("      04/01/2014 v0.82 Support u2i ARA feature (smbb ara)")
+    kr_print_message("      04/01/2014 v0.80 Support u2i ARA feature (smbb ara)")
+    kr_print_message("      03/01/2014 v0.76 Add Arduino u2i support (incl. smbb stat)")
+    kr_print_message("      31/12/2013 v0.75 Moved to https://github.com/kr64/krate.git")
+    kr_print_message("      09/08/2013 vx.xx Add smbb phases[={1,2}]")
+    kr_print_message("      07/08/2013 vx.xx Added list reg inverse lookup, provide address as hex")
+    kr_print_message("      07/08/2013 vx.xx Added smbb info_dsp, smbb stat. Process krate.init at startup")
+    kr_print_message("      22/05/2013 vx.xx Support for Tektronix AFG3022B function generator\n")
 
     # if default variable file not already exists in directory, create it
     kr_save_vars(kratevar_default_fn,krate_vars,overwrite=False)

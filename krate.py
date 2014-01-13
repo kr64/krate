@@ -5,8 +5,8 @@
 import math, glob, os, serial, time
 
 def krate_version():
-    krate_vxpxx=0.82
-    return ("krate v%0.2f 04/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
+    krate_vxpxx=0.83
+    return ("krate v%0.2f 12/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
 
 class FraData(object):
     def __init__(self,name="",legend="", datetimestr=""):
@@ -272,8 +272,11 @@ class Smbb(object):
             self.iftype="tbd"
     def ifflush(self):
       if self.serobject:
-	self.serobject.flushInput()
-	self.serobject.flushOutput()
+	try:
+	  self.serobject.flushInput()
+	  self.serobject.flushOutput()
+	except:
+	  pass
     def set_instr_name(self):
         if self.serobject:
 	    # at this stage we don't know which smbb bridge is in use, so ver needs to work for all devices (mbed, u2i)
@@ -663,6 +666,28 @@ class Smbb(object):
                 # AMBAREG_W read access
                 self.serobject.write("w D3 %02X %02X\n" % (int(amba_data%256),int(amba_data>>8)) )
                 s=self.serobject.readline().strip()
+    def pmbus_ambareg_nof(self, amba_addr,nof_reads=1,treat_values_unsigned=True):
+	# repetitive r access to ambareg register
+	amba_values=list()
+	try:
+	  if self.serobject and self.alive:
+	    self.serobject.write("w D0 %02X %02X\n" % (int(amba_addr%256),int(amba_addr>>8)) )
+	    s=self.serobject.readline().strip()
+	    for i in xrange(0,nof_reads):
+	      self.serobject.write("r D3 2\n")
+	      s=self.serobject.readline().strip().strip("[]")
+	      answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
+	      if len(answer)==2:
+		if treat_values_unsigned:
+		  response=answer[0]+answer[1]*256
+		else:
+		  response=self.pmbus_q15_0(answer[0],answer[1])
+		amba_values.append(response)
+	      else:
+		return None
+	    return amba_values
+	except:
+	  return None
     def statr2(self,amba_addr,nof_reads,timeout_statr2):
         # statistical read access (word) returning min, max and avg
         if  self.serobject and self.alive:
