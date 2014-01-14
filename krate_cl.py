@@ -15,7 +15,7 @@
 # 15/09/2012    smbb vout_command implemented
 # 13/11/2011    created
 
-import cmd, os, krate, time, sys, pickle, xlwt, numpy
+import cmd, os, krate, time, sys, pickle, xlwt, numpy, math
 
 fra1=krate.Fra()
 Vin1=krate.Vin()
@@ -1255,8 +1255,8 @@ def kr_write_gnuplot_hist(fn="smbbambareg", values=None, reginfostr="r", devinfo
             gp_str+='\n'+'hist(x,width)=width*floor(x/width)+width/2.0'
             gp_str+='\n'+'set xrange [min:max]'
             gp_str+='\n'+'set yrange [0:]'
-            gp_str+='\n'+'set offset graph 0.05,0.05,0.05,0.0'
-            gp_str+='\n'+'set xtics min,5,max'
+            # gp_str+='\n'+'set offset graph 0.05,0.05,0.05,0.0'
+            gp_str+='\n'+'set xtics min,(max-min)/10,max'
             gp_str+='\n'+'set boxwidth width'
             gp_str+='\n'+'set style fill solid 0.5'
             gp_str+='\n'+'set tics out nomirror'
@@ -1266,13 +1266,14 @@ def kr_write_gnuplot_hist(fn="smbbambareg", values=None, reginfostr="r", devinfo
             gp_str+='\n'+'set grid xtics ytics'
             gp_str+='\n'+'set grid mxtics mytics'
             # gp_str+='\n'+'set lmargin 10'
+            gp_str+='\n'+'set bmargin 10'
             gp_str+='\n'+'set xlabel "%s"' % reginfostr
             gp_str+='\n'+'set ylabel "#"'
             gp_str+='\n'+'plot "%s" u (hist($1,width)):(1.0) smooth freq w boxes lc rgb"green" notitle' % (fn+".tmp")
-            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN+5,GPVAL_Y_MAX*0.95 tc rgb "gray80"' % (statstr)
-            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN+5,GPVAL_Y_MAX*0.90 tc rgb "gray80"' % (devtelestr)
-            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN+5,GPVAL_Y_MAX*0.85 tc rgb "gray80"' % (devinfostr)
-            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN+5,GPVAL_Y_MAX*0.80 tc rgb "gray80"' % (krate.krate_version())
+            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN,-GPVAL_Y_MAX/10*2.5 tc rgb "gray80"' % (statstr)
+            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN,-GPVAL_Y_MAX/10*3.0 tc rgb "gray80"' % (devtelestr)
+            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN,-GPVAL_Y_MAX/10*3.5 tc rgb "gray80"' % (devinfostr)
+            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN,-GPVAL_Y_MAX/10*4.0 tc rgb "gray80"' % (krate.krate_version())
             gp_str+='\n'+'replot'
             f.write(gp_str)
             f.close()
@@ -1569,7 +1570,6 @@ if __name__ == '__main__':
     kr_print_message("      04/01/2014 v0.82 Support u2i ARA feature (smbb ara)")
     kr_print_message("      04/01/2014 v0.80 Support u2i ARA feature (smbb ara)")
     kr_print_message("      03/01/2014 v0.76 Add Arduino u2i support (incl. smbb stat)")
-    kr_print_message("      31/12/2013 v0.75 Moved to https://github.com/kr64/krate.git")
     kr_print_message("      09/08/2013 vx.xx Add smbb phases[={1,2}]")
     kr_print_message("      07/08/2013 vx.xx Added list reg inverse lookup, provide address as hex")
     kr_print_message("      07/08/2013 vx.xx Added smbb info_dsp, smbb stat. Process krate.init at startup")

@@ -441,6 +441,10 @@ class Smbb(object):
             self.serobject.write("w 01 %02x\n" % op_value)
             s=self.serobject.readline().strip()
         return
+    def pmbus_read_alpha(self):
+        if  self.serobject and self.alive:
+	  alpha=self.pmbus_ambareg(0x1847)*(2**-15)
+	  return alpha
     def pmbus_read_vin(self):
         if  self.serobject and self.alive:
             self.serobject.write("r 88 2\n")
@@ -748,7 +752,7 @@ class Smbb(object):
         if  self.serobject and self.alive:
             vin=self.pmbus_read_vin()
             if vin<>None:
-                vinstr="Vin=%.3fV" % vin
+                vinstr="Vin=%.1fV" % vin
             else:
                 vinstr=""
             vo=self.pmbus_read_vout()
@@ -758,9 +762,14 @@ class Smbb(object):
                 vostr=""
             io=self.pmbus_read_iout()
             if io<>None:
-                iostr="Io=%.3fA" % io
+                iostr="Io=%.1fA" % io
             else:
                 iostr=""
+            alpha=self.pmbus_read_alpha()
+            if alpha<>None:
+                alphastr="alpha=%.3f" % alpha
+            else:
+                alphastr=""
             tempstr=""
             for temp_sensor in [1,2,3]:
                 temp=self.pmbus_read_temp(temp_sensor)/1.0
@@ -785,7 +794,7 @@ class Smbb(object):
                 phstr="ph=%.0d" % nof_ph
             else:
                 phstr=""
-            return vinstr+" "+vostr+" "+iostr+" "+fstr+" "+phstr+" "+dstr+" "+tempstr
+            return vinstr+" "+vostr+" "+iostr+" "+alphastr+" "+fstr+" "+phstr+" "+dstr+" "+tempstr
         else:
             return ("No interface available")
 
