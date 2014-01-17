@@ -6,7 +6,7 @@ import math, glob, os, serial, time
 
 def krate_version():
     krate_vxpxx=0.83
-    return ("krate v%0.2f 12/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
+    return ("krate v%0.2f 15/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
 
 class FraData(object):
     def __init__(self,name="",legend="", datetimestr=""):
@@ -670,7 +670,7 @@ class Smbb(object):
                 # AMBAREG_W read access
                 self.serobject.write("w D3 %02X %02X\n" % (int(amba_data%256),int(amba_data>>8)) )
                 s=self.serobject.readline().strip()
-    def pmbus_ambareg_nof(self, amba_addr,nof_reads=1,treat_values_unsigned=True):
+    def pmbus_ambareg_nof(self, amba_addr,nof_reads=1,scaler=1.0,treat_values_unsigned=True):
 	# repetitive r access to ambareg register
 	amba_values=list()
 	try:
@@ -683,10 +683,10 @@ class Smbb(object):
 	      answer=list([int(i,16) for i in s.split(self.answer_delimiter)])
 	      if len(answer)==2:
 		if treat_values_unsigned:
-		  response=answer[0]+answer[1]*256
+		  response=(answer[0]+answer[1]*256)
 		else:
 		  response=self.pmbus_q15_0(answer[0],answer[1])
-		amba_values.append(response)
+		amba_values.append(response*scaler)
 	      else:
 		return None
 	    return amba_values

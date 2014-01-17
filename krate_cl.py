@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # KR ATE command line user interface
 # history (in reverse order)
+# 17/01/2014	smbb hist refinements (optional scaler)
 # 04/01/2014    amend Arduino u2i (support ara)
 # 03/01/2014    amend Arduino u2i (add smbb stat)
 # 02/01/2014    add Arduino u2i mostly supported (except command smbb stat)
@@ -106,7 +107,64 @@ class KrateCmd(cmd.Cmd):
         pass
     def do_test(self,line):
         # trial area for new test code
-        pass
+        # ACD: repeated startup
+        nof_startups=10
+	tdur_acd=50e-3
+	tdur_acd_rest=2e-3
+
+	received_input=raw_input("REQUEST: Number of ACD startups? (default=%g): "%nof_startups)
+        if received_input:
+            nof_startups=int(float(received_input))
+	received_input=raw_input("REQUEST: ACD duration after Operation ON command (including Trise) (default=%gs): " %tdur_acd)
+        if received_input:
+            tdur_acd=float(received_input)
+	received_input=raw_input("REQUEST: ACD rest after Operation OFF command: (default=%gs): "%tdur_acd_rest)
+        if received_input:
+            tdur_acd=float(received_input)
+	duration_estimated=nof_startups*(tdur_acd+tdur_acd_rest)
+	kr_print_message("Info: ACD repeated startup test (%g startups). Estimated duration: %gs" % (nof_startups,duration_estimated) )
+	kr_print_message("      Getting ready: Operation OFF. Clear Faults")
+	Smbb1.pmbus_operation(0x0)
+	time.sleep(tdur_acd_rest)
+	Smbb1.pmbus_clear_faults()
+	devinfostr=Smbb1.pmbus_devinfo()
+	kr_print_message("      Device info: '%s'" % devinfostr )
+	v_alpha=list(); v_alphamax=list(); v_alphamin=list();
+	for i in xrange(0,nof_startups):
+	  Smbb1.pmbus_operation(0x88)
+	  time.sleep(tdur_acd)
+	  if i==0:
+	    # at first turn on, get device telemetry information. Note that FW needs settling time to produce telemetry (give it a second)
+	    time.sleep(1.0)
+	    devtelestr=Smbb1.pmbus_devtele()
+	    kr_print_message("      Telemetry: '%s'" % devtelestr )
+	  # just prior to Operation OFF gather alpha information
+	  alpha=Smbb1.pmbus_ambareg(0x1847)/32768.0
+	  alpha_min=Smbb1.pmbus_ambareg(0x183F)/32768.0
+	  alpha_max=Smbb1.pmbus_ambareg(0x1834)/32768.0
+	  Smbb1.pmbus_operation(0x0)
+	  time.sleep(tdur_acd_rest)
+	  Smbb1.pmbus_ara()
+	  if len(Smbb1.addr_pmbus_ara):
+	    kr_print_message("Error: ACD terminated due to fault" )
+	    devinfostr=Smbb1.pmbus_devinfo()
+	    kr_print_message("       Device info: '%s'" % devinfostr )
+	    break;
+	  # if no faults, append alpha values to lists
+	  v_alpha.append(alpha); v_alphamax.append(alpha_max); v_alphamin.append(alpha_min); 
+	  kr_print_message("      Startup %g: alpha=%g alpha_min=%g alpha_max=%g" % (i,alpha,alpha_min,alpha_max) )
+ 	kr_print_message("Info: ACD tests complete. Recorded alpha values: %.0f" %len(v_alpha) )
+ 	if len(v_alpha)>0:
+	  kr_write_smbbreg("acd_alpha",v_alpha)
+	  kr_write_smbbreg("acd_alphamax",v_alphamax)
+	  kr_write_smbbreg("acd_alphamin",v_alphamin)
+	  statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(v_alpha),min(v_alpha),max(v_alpha),(max(v_alpha)-min(v_alpha)),numpy.mean(v_alpha),numpy.std(v_alpha))
+	  kr_write_gnuplot_hist("acd_alpha", v_alpha, "ACD %.0f startups: alpha (dsp_y7) q0.15"%nof_startups, devinfostr, devtelestr, statstr, True, "blue")
+	  statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(v_alphamax),min(v_alphamax),max(v_alphamax),(max(v_alphamax)-min(v_alphamax)),numpy.mean(v_alphamax),numpy.std(v_alphamax))
+	  kr_write_gnuplot_hist("acd_alphamax", v_alphamax, "ACD %.0f startups: alpha_max (dsp_x20) q0.15"%nof_startups, devinfostr, devtelestr, statstr, False, "red")
+	  statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(v_alphamin),min(v_alphamin),max(v_alphamin),(max(v_alphamin)-min(v_alphamin)),numpy.mean(v_alphamin),numpy.std(v_alphamin))
+	  kr_write_gnuplot_hist("acd_alphamin", v_alphamin, "ACD %.0f startups: alpha_min (dsp_x31) q0.15"%nof_startups, devinfostr, devtelestr, statstr, False, "green")
+
     def do_smbb(self,line):
         """ interact with SMBus Bridge (smbb)
   'smbb addr' sets the active address for smbus transactions
@@ -116,7 +174,7 @@ class KrateCmd(cmd.Cmd):
   'smbb clear_faults' clears PMBus faults status register
   'smbb frequency_switch fsw' sets switching frequency to fsw (375-1000kHz in 125kHz steps
   'smbb hal reg [value]' reads from, or writes value to, device HAL register
-  'smbb hist[u] reg [nof]' reads amba register [u]=unsigned nof times and creates a histogram
+  'smbb hist[u] reg [nof] [scaler]' reads amba register [u]=unsigned nof times scaled then histogram
   'smbb import reg fn' imports amba register definitions from assembly list file
   'smbb info' obtains basic device information from active smbus device
   'smbb info_dsp' provides overview of dsp registers
@@ -155,7 +213,6 @@ class KrateCmd(cmd.Cmd):
                 elif nof_args==3:
                     alpha_min=float(line.split()[1])
                     alpha_max=float(line.split()[2])
-                    
                 else:
                     kr_print_message("Error: smbb alpha expects one or two arguments")
                 if ((nof_args==2) | (nof_args==3)):
@@ -281,7 +338,6 @@ class KrateCmd(cmd.Cmd):
 			    else:
 			      kr_print_message("ERROR: failed to read register %s [0x%04X]" % (i,ambareg_a))
             elif "hist" in (line.split()[0]):
-                # we're expecting 1 or 2 arguments. which register, and number of reads (if not given, 1k default)
 		if "histu" in (line.split()[0]):
 		  treat_values_unsigned=True
 		else:
@@ -298,19 +354,25 @@ class KrateCmd(cmd.Cmd):
                 if nof_reads<0:
                     nof_reads=nof_reads*-1;
                 nof_reads=int(nof_reads)
+                if len(line.split())>3:
+                    scaler=eval(line.split()[3])
+                else:
+                    scaler=1.0
                 if ambareg_n:
                     for i in sorted(registers_amba.keys()):
                         if ambareg_n==i:
                             register_found=True
                             ambareg_a=registers_amba[ambareg_n]
                             duration_estimated=nof_reads*(5.0*10.0*(1/400e3)+2e-3)	# raw read duration: S+addr/w+cmd+Sr+addr/r+lsb+msb, plus usb/python overhead say 100%
-                            kr_print_message("Info: Histogram register %s (0x%04x) based on %.0f values. Estimated duration: %.1fs" % (ambareg_n,ambareg_a,float(nof_reads),duration_estimated) )
-                            ambareg_v=Smbb1.pmbus_ambareg_nof(ambareg_a,nof_reads,treat_values_unsigned)	# read ambareg_a nof_reads times, treat values signed/unsigned
+                            kr_print_message("Info: Histogram register %s (0x%04x) scaled by %.1e based on %.0f values. Estimated duration: %.1fs" % (ambareg_n,ambareg_a,scaler,float(nof_reads),duration_estimated) )
+                            ambareg_v=Smbb1.pmbus_ambareg_nof(ambareg_a,nof_reads,scaler,treat_values_unsigned)	# read ambareg_a nof_reads times, treat values signed/unsigned
                             if ambareg_v:
 			      reginfostr="%s (addr 0x%04x)" % (ambareg_n,ambareg_a)
+			      if scaler<>1:
+				reginfostr=reginfostr+" scaled by %g" % scaler
 			      devinfostr=Smbb1.pmbus_devinfo()
 			      devtelestr=Smbb1.pmbus_devtele()
-			      statstr="Samples=%.0f Min=%.0f Max=%.0f Pkpk=%0.f Mean=%.3f Stdev=%.3f" % (len(ambareg_v),min(ambareg_v),max(ambareg_v),(max(ambareg_v)-min(ambareg_v)),numpy.mean(ambareg_v),numpy.std(ambareg_v))
+			      statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(ambareg_v),min(ambareg_v),max(ambareg_v),(max(ambareg_v)-min(ambareg_v)),numpy.mean(ambareg_v),numpy.std(ambareg_v))
 			      kr_print_message("Info: Stats:     %s" % (statstr))
 			      kr_print_message("      Register   %s" % (reginfostr))
 			      kr_print_message("      Device:    %s" % (devinfostr))
@@ -1234,29 +1296,56 @@ def kr_write_smbbreg(fn="smbbambareg",values=None,overwrite=True):
 	f.close()
 	kr_print_message("ERROR: writing to file '%s'" % fn)
 
+def kr_determine_axis_settings(vmin,vmax):
+  # determine "pretty" axis settings to cater for values between vmin and vmax
+  span=vmax-vmin
+  if vmin==0 and vmax==0:
+    xmin=-0.5; xmax=0.5; xgrid=0.25;
+  else:
+    if span==0:
+      n10=numpy.floor(numpy.log10(abs(vmin))); k10=vmin/(10**n10);
+      xmin=numpy.floor(k10*10)*(10**(n10-1)); xmax=(numpy.floor(k10*10)+1)*(10**(n10-1)); xgrid=(xmax-xmin)/2;
+    else:
+      n10=numpy.floor(numpy.log10(span)); k10=span/(10**n10); m10=1
+      #Adjustment 1: If k10 smaller than 2, scale it up by a factor of 10, and adjust n10
+      if (k10<1.5):
+	n10=n10-1; k10=k10*10
+      #Adjustment 2: If k10 smaller than 5, scale down m10 and adjust k10 upwards
+      if (k10<4):
+	m10=m10/4.0; k10=k10*4
+      #Determine axis settings
+      # print "n10=%f k10=%f, m10=%f" % (n10,k10,m10)
+      xgrid=m10*(10**n10)
+      xspan=m10*(numpy.floor(k10)+2)*(10**n10)
+      xmin=vmin-numpy.mod(vmin,m10*(10**n10))
+      xmax=xmin+xspan
+  return (xmin,xgrid,xmax)
 
-def kr_write_gnuplot_hist(fn="smbbambareg", values=None, reginfostr="r", devinfostr="", devtelestr="", statstr="", exe_gnuplot=False):
-	    minv=int(min(values)/10)*10
-	    maxv=int(max(values)/10+1)*10
-	    n=min(50,maxv-minv)
+def kr_write_gnuplot_hist(fn="smbbambareg", values=None, reginfostr="r", devinfostr="", devtelestr="", statstr="", exe_gnuplot=False, color="green"):
+	    vmin=min(values)
+	    vmax=max(values)
+	    (xmin,xgrid,xmax)=kr_determine_axis_settings(vmin,vmax)
+	    bins=5*abs((xmax-xmin)/xgrid)
             kr_print_message("INFO: Writing GNUPLOT histogram script to '%s'" % (fn+".gp"))
+            # kr_print_message("      Histogram parameters: xmin=%.1f xmax=%.1f xgrid=%.1f bins=%.1f given data %.1f..%.1f" % (xmin,xmax,xgrid,bins,vmin,vmax))
             f=open(fn+".gp","wt")
             gp_str=""
             gp_str+='# GNUPLOT script generated by %s' % krate.krate_version()
             gp_str+='\n'+'# Register:  %s' % reginfostr
             gp_str+='\n'+'# Device:    %s' % devinfostr
             gp_str+='\n'+'# Telemetry: %s' % devtelestr
-            gp_str+='\n'+'# Stats:     %s' % statstr
+            gp_str+='\n'+'# Stats:     %s (%.0f bins)' % (statstr,bins)
             gp_str+='\n'+'set terminal wxt size %d,%d'%(krate_vars['bp_sizex'],krate_vars['bp_sizey']/2)
-            gp_str+='\n'+'n=%.0f' % n
-            gp_str+='\n'+'max=%.0f' % maxv
-            gp_str+='\n'+'min=%.0f' % minv
-            gp_str+='\n'+'width=(max-min)/n'
+            gp_str+='\n'+'bins=%f' % bins
+            gp_str+='\n'+'max=%f' % xmax
+            gp_str+='\n'+'min=%f' % xmin
+            gp_str+='\n'+'width=(max-min)/bins'
             gp_str+='\n'+'hist(x,width)=width*floor(x/width)+width/2.0'
             gp_str+='\n'+'set xrange [min:max]'
             gp_str+='\n'+'set yrange [0:]'
             # gp_str+='\n'+'set offset graph 0.05,0.05,0.05,0.0'
-            gp_str+='\n'+'set xtics min,(max-min)/10,max'
+            # gp_str+='\n'+'set xtics min,%f,max' % xgrid
+            gp_str+='\n'+'set xtics %f,%f,%f' % (xmin,xgrid,xmax)
             gp_str+='\n'+'set boxwidth width'
             gp_str+='\n'+'set style fill solid 0.5'
             gp_str+='\n'+'set tics out nomirror'
@@ -1269,8 +1358,8 @@ def kr_write_gnuplot_hist(fn="smbbambareg", values=None, reginfostr="r", devinfo
             gp_str+='\n'+'set bmargin 10'
             gp_str+='\n'+'set xlabel "%s"' % reginfostr
             gp_str+='\n'+'set ylabel "#"'
-            gp_str+='\n'+'plot "%s" u (hist($1,width)):(1.0) smooth freq w boxes lc rgb"green" notitle' % (fn+".tmp")
-            gp_str+='\n'+'set label "%s" at GPVAL_X_MIN,-GPVAL_Y_MAX/10*2.5 tc rgb "gray80"' % (statstr)
+            gp_str+='\n'+'plot "%s" u (hist($1,width)):(1.0) smooth freq w boxes lc rgb"%s" notitle' % (fn+".tmp",color)
+            gp_str+='\n'+'set label "%s (%.0f bins)" at GPVAL_X_MIN,-GPVAL_Y_MAX/10*2.5 tc rgb "gray80"' % (statstr,bins)
             gp_str+='\n'+'set label "%s" at GPVAL_X_MIN,-GPVAL_Y_MAX/10*3.0 tc rgb "gray80"' % (devtelestr)
             gp_str+='\n'+'set label "%s" at GPVAL_X_MIN,-GPVAL_Y_MAX/10*3.5 tc rgb "gray80"' % (devinfostr)
             gp_str+='\n'+'set label "%s" at GPVAL_X_MIN,-GPVAL_Y_MAX/10*4.0 tc rgb "gray80"' % (krate.krate_version())
@@ -1566,7 +1655,7 @@ if __name__ == '__main__':
     print welcome_frame
     kr_print_message("HELP: Type 'help [command]' if you're lost. Enjoy!\n")
 
-    kr_print_message("      12/01/2014 v0.84 Support register histograms (smbb hist[u])")
+    kr_print_message("      17/01/2014 ->v0.84 Support register histograms (smbb hist[u])")
     kr_print_message("      04/01/2014 v0.82 Support u2i ARA feature (smbb ara)")
     kr_print_message("      04/01/2014 v0.80 Support u2i ARA feature (smbb ara)")
     kr_print_message("      03/01/2014 v0.76 Add Arduino u2i support (incl. smbb stat)")
