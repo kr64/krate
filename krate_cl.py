@@ -107,63 +107,9 @@ class KrateCmd(cmd.Cmd):
         pass
     def do_test(self,line):
         # trial area for new test code
-        # ACD: repeated startup
-        nof_startups=10
-	tdur_acd=50e-3
-	tdur_acd_rest=2e-3
-
-	received_input=raw_input("REQUEST: Number of ACD startups? (default=%g): "%nof_startups)
-        if received_input:
-            nof_startups=int(float(received_input))
-	received_input=raw_input("REQUEST: ACD duration after Operation ON command (including Trise) (default=%gs): " %tdur_acd)
-        if received_input:
-            tdur_acd=float(received_input)
-	received_input=raw_input("REQUEST: ACD rest after Operation OFF command: (default=%gs): "%tdur_acd_rest)
-        if received_input:
-            tdur_acd=float(received_input)
-	duration_estimated=nof_startups*(tdur_acd+tdur_acd_rest)
-	kr_print_message("Info: ACD repeated startup test (%g startups). Estimated duration: %gs" % (nof_startups,duration_estimated) )
-	kr_print_message("      Getting ready: Operation OFF. Clear Faults")
-	Smbb1.pmbus_operation(0x0)
-	time.sleep(tdur_acd_rest)
-	Smbb1.pmbus_clear_faults()
-	devinfostr=Smbb1.pmbus_devinfo()
-	kr_print_message("      Device info: '%s'" % devinfostr )
-	v_alpha=list(); v_alphamax=list(); v_alphamin=list();
-	for i in xrange(0,nof_startups):
-	  Smbb1.pmbus_operation(0x88)
-	  time.sleep(tdur_acd)
-	  if i==0:
-	    # at first turn on, get device telemetry information. Note that FW needs settling time to produce telemetry (give it a second)
-	    time.sleep(1.0)
-	    devtelestr=Smbb1.pmbus_devtele()
-	    kr_print_message("      Telemetry: '%s'" % devtelestr )
-	  # just prior to Operation OFF gather alpha information
-	  alpha=Smbb1.pmbus_ambareg(0x1847)/32768.0
-	  alpha_min=Smbb1.pmbus_ambareg(0x183F)/32768.0
-	  alpha_max=Smbb1.pmbus_ambareg(0x1834)/32768.0
-	  Smbb1.pmbus_operation(0x0)
-	  time.sleep(tdur_acd_rest)
-	  Smbb1.pmbus_ara()
-	  if len(Smbb1.addr_pmbus_ara):
-	    kr_print_message("Error: ACD terminated due to fault" )
-	    devinfostr=Smbb1.pmbus_devinfo()
-	    kr_print_message("       Device info: '%s'" % devinfostr )
-	    break;
-	  # if no faults, append alpha values to lists
-	  v_alpha.append(alpha); v_alphamax.append(alpha_max); v_alphamin.append(alpha_min); 
-	  kr_print_message("      Startup %g: alpha=%g alpha_min=%g alpha_max=%g" % (i,alpha,alpha_min,alpha_max) )
- 	kr_print_message("Info: ACD tests complete. Recorded alpha values: %.0f" %len(v_alpha) )
- 	if len(v_alpha)>0:
-	  kr_write_smbbreg("acd_alpha",v_alpha)
-	  kr_write_smbbreg("acd_alphamax",v_alphamax)
-	  kr_write_smbbreg("acd_alphamin",v_alphamin)
-	  statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(v_alpha),min(v_alpha),max(v_alpha),(max(v_alpha)-min(v_alpha)),numpy.mean(v_alpha),numpy.std(v_alpha))
-	  kr_write_gnuplot_hist("acd_alpha", v_alpha, "ACD %.0f startups: alpha (dsp_y7) q0.15"%nof_startups, devinfostr, devtelestr, statstr, True, "blue")
-	  statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(v_alphamax),min(v_alphamax),max(v_alphamax),(max(v_alphamax)-min(v_alphamax)),numpy.mean(v_alphamax),numpy.std(v_alphamax))
-	  kr_write_gnuplot_hist("acd_alphamax", v_alphamax, "ACD %.0f startups: alpha_max (dsp_x20) q0.15"%nof_startups, devinfostr, devtelestr, statstr, False, "red")
-	  statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(v_alphamin),min(v_alphamin),max(v_alphamin),(max(v_alphamin)-min(v_alphamin)),numpy.mean(v_alphamin),numpy.std(v_alphamin))
-	  kr_write_gnuplot_hist("acd_alphamin", v_alphamin, "ACD %.0f startups: alpha_min (dsp_x31) q0.15"%nof_startups, devinfostr, devtelestr, statstr, False, "green")
+	kr_print_message("Info: Feel free to use the test area of krate_cl.py to develop/debug sub-scripts")
+	kr_print_message("      After debug, these scripts can become *.src modules")
+	kr_print_message("      These *.src modules can then be activated using the run command")
 
     def do_smbb(self,line):
         """ interact with SMBus Bridge (smbb)
@@ -1655,7 +1601,7 @@ if __name__ == '__main__':
     print welcome_frame
     kr_print_message("HELP: Type 'help [command]' if you're lost. Enjoy!\n")
 
-    kr_print_message("      17/01/2014 ->v0.84 Support register histograms (smbb hist[u])")
+    kr_print_message("      19/01/2014 v0.84 Support register histograms (smbb hist[u])")
     kr_print_message("      04/01/2014 v0.82 Support u2i ARA feature (smbb ara)")
     kr_print_message("      04/01/2014 v0.80 Support u2i ARA feature (smbb ara)")
     kr_print_message("      03/01/2014 v0.76 Add Arduino u2i support (incl. smbb stat)")

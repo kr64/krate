@@ -5,8 +5,8 @@
 import math, glob, os, serial, time
 
 def krate_version():
-    krate_vxpxx=0.83
-    return ("krate v%0.2f 15/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
+    krate_vxpxx=0.84
+    return ("krate v%0.2f 19/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
 
 class FraData(object):
     def __init__(self,name="",legend="", datetimestr=""):
@@ -770,15 +770,17 @@ class Smbb(object):
                 alphastr="alpha=%.3f" % alpha
             else:
                 alphastr=""
-            tempstr=""
+            tempstr="T1..T3="
             for temp_sensor in [1,2,3]:
                 temp=self.pmbus_read_temp(temp_sensor)/1.0
+                if temp_sensor<>1:
+		  tempstr=tempstr+", "
                 if temp<>None:
-                    tempstr=tempstr+" T%d=%.0fdegC" % (temp_sensor,temp)
+                    tempstr=tempstr+"%.0f" % (temp)
                 else:
                     tempstr=" "
                     break
-            tempstr=tempstr.strip()
+            tempstr=tempstr.strip()+"degC"
             d=self.pmbus_read_duty_cycle()
             if d<>None:
                 dstr="d=%.1f%%" % d
