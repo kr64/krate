@@ -1,5 +1,5 @@
 # ACD: repeated startup
-nof_startups=10
+nof_startups=1000
 tdur_acd=50e-3
 tdur_acd_rest=2e-3
 v_alpha=list(); v_alphamax=list(); v_alphamin=list();
@@ -21,6 +21,9 @@ try:
   Smbb1.pmbus_clear_faults()
   devinfostr=Smbb1.pmbus_devinfo()
   kr_print_message("      Device info: '%s'" % devinfostr )
+  acd_alpha_factors=Smbb1.pmbus_ambareg(0x1c21)		# dpwm_az_prog_pos
+  kminmaxstr="kmin=%.1f%% kmax=%.1f%%" % ( (acd_alpha_factors&0xff)/128.0*100.0,(acd_alpha_factors>>8)/128.0*100.0 )
+  kr_print_message("      ACD coefficients: %s (extracted from dpwm_az_prog_pos)" % kminmaxstr)
   for i in xrange(0,nof_startups):
     Smbb1.pmbus_operation(0x88)
     time.sleep(tdur_acd)
@@ -58,8 +61,8 @@ if len(v_alpha)>0:
   kr_write_smbbreg("acd_alphamax",v_alphamax)
   kr_write_smbbreg("acd_alphamin",v_alphamin)
   statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(v_alpha),min(v_alpha),max(v_alpha),(max(v_alpha)-min(v_alpha)),numpy.mean(v_alpha),numpy.std(v_alpha))
-  kr_write_gnuplot_hist("acd_alpha", v_alpha, "ACD %.0f startups: alpha (dsp_y7) q0.15"%nof_startups, devinfostr, devtelestr, statstr, True, "blue")
+  kr_write_gnuplot_hist("acd_alpha", v_alpha, "ACD %.0f startups: alpha (dsp_y7) (ACD %s)"%(nof_startups,kminmaxstr), devinfostr, devtelestr, statstr, False, "blue")
   statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(v_alphamax),min(v_alphamax),max(v_alphamax),(max(v_alphamax)-min(v_alphamax)),numpy.mean(v_alphamax),numpy.std(v_alphamax))
-  kr_write_gnuplot_hist("acd_alphamax", v_alphamax, "ACD %.0f startups: alpha_max (dsp_x20) q0.15"%nof_startups, devinfostr, devtelestr, statstr, False, "red")
+  kr_write_gnuplot_hist("acd_alphamax", v_alphamax, "ACD %.0f startups: alpha_max (dsp_x20) (ACD %s)"%(nof_startups,kminmaxstr), devinfostr, devtelestr, statstr, True, "red")
   statstr="Samples=%.0f Min=%g Max=%g Pkpk=%0g Mean=%.3f Stdev=%.3f" % (len(v_alphamin),min(v_alphamin),max(v_alphamin),(max(v_alphamin)-min(v_alphamin)),numpy.mean(v_alphamin),numpy.std(v_alphamin))
-  kr_write_gnuplot_hist("acd_alphamin", v_alphamin, "ACD %.0f startups: alpha_min (dsp_x31) q0.15"%nof_startups, devinfostr, devtelestr, statstr, False, "green")
+  kr_write_gnuplot_hist("acd_alphamin", v_alphamin, "ACD %.0f startups: alpha_min (dsp_x31) (ACD %s)"%(nof_startups,kminmaxstr), devinfostr, devtelestr, statstr, False, "green")

@@ -5,8 +5,8 @@
 import math, glob, os, serial, time
 
 def krate_version():
-    krate_vxpxx=0.84
-    return ("krate v%0.2f 19/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
+    krate_vxpxx=0.85
+    return ("krate v%0.2f 20/01/2014, (c) 2011-2014 by KR" % krate_vxpxx)
 
 class FraData(object):
     def __init__(self,name="",legend="", datetimestr=""):
@@ -406,7 +406,7 @@ class Smbb(object):
     def pmbus_icmfr_info(self):
         if  self.serobject and self.alive:
             # ICMFR_INFO
-            # returns lsb msb with lsb=01 (count), and msb='B' for BL, or 'F', or...
+            # returns lsb msb with lsb=01 (count), and msb='B' for BL, or 'F', T for 'T'
             self.serobject.write("r D8 2\n")
             s=self.serobject.readline().strip().strip("[]")	# u2i delivers answer in brackets
             try:
@@ -729,7 +729,7 @@ class Smbb(object):
         # try to compile smbus device info, consisting of FW/DSP/HW and Status Word information
         if  self.serobject and self.alive:
             icmfrstr=self.pmbus_icmfr_info()
-            if icmfrstr.upper()=="F" or icmfrstr.upper()=="S":
+            if icmfrstr.upper()=="F" or icmfrstr.upper()=="S" or icmfrstr.upper()=="T":
                 fwstr=self.pmbus_read_fw_version()
                 dspstr=self.pmbus_read_dsp_version()
                 hwstr=self.pmbus_read_hw_version()

@@ -1601,6 +1601,7 @@ if __name__ == '__main__':
     print welcome_frame
     kr_print_message("HELP: Type 'help [command]' if you're lost. Enjoy!\n")
 
+    kr_print_message("      20/01/2014 ->v0.86 Support test FW tags")
     kr_print_message("      19/01/2014 v0.84 Support register histograms (smbb hist[u])")
     kr_print_message("      04/01/2014 v0.82 Support u2i ARA feature (smbb ara)")
     kr_print_message("      04/01/2014 v0.80 Support u2i ARA feature (smbb ara)")
